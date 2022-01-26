@@ -5,6 +5,9 @@ from tensorflow import keras
 from tensorflow.keras import Model
 from tensorflow.keras.layers import Dense
 from keras import backend as K
+import time
+start_time = time.time()
+
 
 
 def load_data(file_name, header_column):
@@ -33,6 +36,12 @@ def train_test_split(headers, data, test_size, random):
 headers, data = load_data("databases/nasa_filtered.csv", 1)
 
 training, testing, = train_test_split(headers, data, 0.05, False)
+#create 2 lists to save loss and r2 from each 100 epoch
+all_loss = []
+all_r2 = []
+all_loss_t = []
+all_r2_t = []
+epoch_num = []
 
 # randomly remove some data
 def random_remove(df, rate):
@@ -63,7 +72,7 @@ class EMAmodel(Model):
     self.layer = []
     for i in range(self.length):   # create branches
       self.layer.append(tf.keras.Sequential(
-        layers=[Dense(nodes, activation='tanh', input_shape=(self.length,)),Dense(1)], name=None))
+        layers=[Dense(nodes, activation='sigmoid', input_shape=(self.length,)),Dense(1)], name=None))
 
   def call(self, x):
     for i in range(self.times):   # iterations to calculate the mean value of x^n and x^(n+1)
@@ -112,12 +121,14 @@ def N_folder_split_data(data, N):
     training.append(data_rest)
   return training, validation
 
+
 def test(x_test, y_test):  # testing step
     predictions = model(x_test)
-    loss = loss_object(y_test, predictions)
-    r2 = evaluation(predictions, y_test)
-    template = 'test set: Loss {}, Evaluation {}'
+    loss_t = loss_object(y_test, predictions)
+    r2_t = evaluation(predictions, y_test)
+    template = 'Loss {}, Evaluation {}'
     print(template.format(loss, r2))
+    return loss_t, r2_t
 
 def validate(x_validation, y_validation):  # validation step
     predictions = model(x_validation)
@@ -129,19 +140,19 @@ def validate(x_validation, y_validation):  # validation step
     return loss, r2
 
 N = 5
-nodes = 5
-times = 5
-epochs = 5
+nodes = 4
+times = 4
+epochs = 25001
 y_test = fill_mean(testing)
 x_test = random_remove(testing, 0.5)
 fill_mean(x_test)
 loss_object = keras.losses.MeanSquaredError()
-optimizer = keras.optimizers.Adam(learning_rate=0.1)
+optimizer = keras.optimizers.Adam(learning_rate=0.05)
 training_data, validation_data = N_folder_split_data(training, N)
 loss_result = 0
 r2_result = 0
 
-for i in range(N):
+for i in range(N-4):
     training = training_data[i]
     y_train = fill_mean(training)
     validation = validation_data[i]
@@ -153,13 +164,21 @@ for i in range(N):
         x_train = random_remove(training, 0.5)
         fill_mean(x_train)
         loss, r2 = train(x_train, y_train)
-        if (epoch % 1 == 0):
+        if (epoch % 100 == 0):
+            print("  validation loss and r2  : ") 
             template = 'Epoch {}, Loss {}, Evaluation {}'
             print(template.format(epoch, loss, r2))
-        test(x_test, y_test)  # test
+            print("  test loss and r2  : ")  
+            loss_t, r2_t = test(x_test, y_test)  # test
+            all_loss.append(loss.numpy())
+            all_r2.append(r2)
+            all_loss_t.append(loss_t.numpy())
+            all_r2_t.append(r2_t)
+            epoch_num.append(epoch)
 
     loss, r2 = validate(x_validation, y_validation)
     loss_result = loss+loss_result
     r2_result = r2+r2_result
 
 print(N, 'fold validation result is:', loss_result/N, r2_result/N)
+print("--- %s seconds ---" % (time.time() - start_time))
